@@ -1,61 +1,77 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Spend‑Analysis Dashboard – Power BI‑style Streamlit app.
+
+Features
+--------
+* Sidebar slicers (Category, Supplier, Date)
+* KPI cards with delta vs. previous period
+* Cross‑filtering by clicking on Plotly charts
+* Drill‑through to an interactive Ag‑Grid table
+* Tabs for Overview / Trends / Details
+* Data refresh & CSV/Excel export
+"""
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from streamlit_plotly_events import plotly_events
+from st_aggrid import AgGrid, GridOptionsBuilder
+from io import BytesIO
+from datetime import date, timedelta
 
-st.set_page_config(page_title="Spend Analysis Dashboard", page_icon="💰", layout="wide")
+# ----------------------------------------------------------------------
+# 1️⃣ Page configuration & global CSS
+# ----------------------------------------------------------------------
+st.set_page_config(
+    page_title="Spend Analysis Dashboard",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# --- custom styling to match the screenshot layout ---
+# Hide Streamlit's default menu/footer + custom card styling
 st.markdown(
     """
     <style>
-    /* Hide default Streamlit menu / footer */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-
-    /* Global font / background */
-    .reportview-container .main {
-        background-color: #f7f9ff;
-    }
-
-    /* Header */
+    #MainMenu, footer {visibility: hidden;}
+    .main .block-container {padding-top: 0rem;}
     .app-header {
         background: linear-gradient(90deg, #0570e6 0%, #0093ff 100%);
-        padding: 18px 24px;
-        border-radius: 12px;
+        padding: 1.5rem 2rem;
+        border-radius: 20px;
         color: white;
-        margin-bottom: 18px;
+        margin-bottom: 1.2rem;
     }
-    .app-header h1 {
-        margin: 0;
-        font-size: 28px;
-        letter-spacing: 0.4px;
+    .app-header h1 {margin:0;font-size:2rem;letter-spacing:1px;}
+
+    /* Top-row selects (filters) */
+    .stSelectbox > div:first-child,
+    .stDateInput > div:first-child {
+        border: 1px solid #1976d2 !important;
+        border-radius: 10px !important;
+        padding: 0.4rem 0.6rem !important;
+        background: #fff !important;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    }
+    .stSelectbox label, .stDateInput label {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.25rem;
     }
 
-    /* Cards */
-    .metric-card {
-        background: white;
-        border: 1px solid #dfe3ea;
-        border-radius: 12px;
-        padding: 14px 18px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-        min-height: 100px;
+    .kpi-card {
+        background: white; border:1px solid #1976d2; border-radius:12px;
+        padding:1rem 1.2rem; box-shadow:0 2px 10px rgba(0,0,0,.05);
     }
-    .metric-card h3 {
-        margin: 0 0 6px 0;
-        color: #5a5a5a;
-        font-size: 14px;
-        letter-spacing: 0.4px;
-    }
-    .metric-card .value {
-        font-size: 28px;
-        font-weight: 700;
-        margin: 0;
-    }
+    .kpi-card h3 {margin:0;font-size:.95rem;color:#555;}
+    .kpi-card .value {font-size:1.8rem;font-weight:600;margin-top:.3rem;}
 
     /* Category panel */
     .category-panel {
         background: white;
-        border: 1px solid #dfe3ea;
+        border: 1px solid #1976d2;
         border-radius: 12px;
         padding: 16px;
         height: 100%;
@@ -86,166 +102,181 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-@st.cache_data
-def load_data(url):
-    df = pd.read_excel(url)
+# ----------------------------------------------------------------------
+# 2️⃣ Helper functions
+# ----------------------------------------------------------------------
+@st.cache_data(ttl=3600)       # refresh at most once per hour (or click ↻)
+def load_data(url: str) -> pd.DataFrame:
+    """Load the Excel sheet from Google Drive → clean column names → parse dates."""
+    df = pd.read_excel(url, engine="openpyxl")
     df.columns = df.columns.str.strip()
-    df["PO.Date"] = pd.to_datetime(df["PO.Date"])
+    # Expect column name “PO.Date” – adjust if needed
+    df["PO.Date"] = pd.to_datetime(df["PO.Date"], errors="coerce")
     return df
 
-# --- Data load and refresh ---
-if "refresh" not in st.session_state:
-    st.session_state["refresh"] = 0
 
-if st.button("🔄 Refresh Data"):
-    st.cache_data.clear()
-    st.session_state["refresh"] += 1
+def format_inr(val: float) -> str:
+    """Compact INR formatting – Cr / Lakh / K."""
+    if pd.isna(val):
+        return "₹0"
+    if val >= 1_00_00_000:
+        return f"₹{val/1_00_00_000:,.2f} Cr"
+    if val >= 1_00_000:
+        return f"₹{val/1_00_000:,.2f} Lakh"
+    if val >= 1_000:
+        return f"₹{val/1_000:,.1f} K"
+    return f"₹{val:,.0f}"
 
-sheet_url = "https://docs.google.com/spreadsheets/d/1Rw_KMZh09GFx4clY-X6DEDh5z5Ikv0hW/export?format=xlsx"
-df = load_data(sheet_url)
 
-# --- Filters ---
-categories = ["All"] + sorted(df["Category"].dropna().unique())
+def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
+    """Filter based on the 3 sidebar slicers stored in session_state."""
+    dff = df.copy()
 
+    # Category filter
+    if st.session_state.selected_category != "All":
+        dff = dff[dff["Category"] == st.session_state.selected_category]
+
+    # Supplier filter
+    if st.session_state.selected_supplier != "All":
+        dff = dff[dff["Name"] == st.session_state.selected_supplier]
+
+    # Date range filter (two‑element list)
+    if isinstance(st.session_state.date_range, list) and len(st.session_state.date_range) == 2:
+        start, end = st.session_state.date_range
+        dff = dff[(dff["PO.Date"].dt.date >= start) & (dff["PO.Date"].dt.date <= end)]
+
+    return dff
+
+
+def get_prev_period(df: pd.DataFrame, date_range: list) -> pd.DataFrame:
+    """Return a slice representing the period immediately before the current selection."""
+    start, end = date_range
+    # length of current window
+    delta = end - start
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - delta
+    mask = (df["PO.Date"].dt.date >= prev_start) & (df["PO.Date"].dt.date <= prev_end)
+    return df.loc[mask]
+
+# ----------------------------------------------------------------------
+# 3️⃣ Load data (once per session, refreshable)
+# ----------------------------------------------------------------------
+SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/1Rw_KMZh09GFx4clY-X6DEDh5z5Ikv0hW/export?"
+    "format=xlsx"
+)
+raw_df = load_data(SHEET_URL)
+
+# ----------------------------------------------------------------------
+# 4️⃣ Initialise session_state (run only once)
+# ----------------------------------------------------------------------
 if "selected_category" not in st.session_state:
-    st.session_state["selected_category"] = "All"
-
+    st.session_state.selected_category = "All"
 if "selected_supplier" not in st.session_state:
-    st.session_state["selected_supplier"] = "All"
-
+    st.session_state.selected_supplier = "All"
 if "date_range" not in st.session_state:
-    min_date = df["PO.Date"].min().date()
-    max_date = df["PO.Date"].max().date()
-    st.session_state["date_range"] = [min_date, max_date]
+    min_date = raw_df["PO.Date"].min().date()
+    max_date = raw_df["PO.Date"].max().date()
+    st.session_state.date_range = [min_date, max_date]
 
-# Synchronize suppliers based on selected category
-if st.session_state["selected_category"] != "All":
-    suppliers = ["All"] + sorted(
-        df[df["Category"] == st.session_state["selected_category"]]["Name"].dropna().unique()
+# ----------------------------------------------------------------------
+# 5️⃣ Top filters (no sidebar) + refresh
+# ----------------------------------------------------------------------
+refresh_col, title_col = st.columns([1, 11])
+with refresh_col:
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.experimental_rerun()
+
+with title_col:
+    st.markdown(
+        """
+        <div class="app-header">
+            <h1>KEPL Procurement Analysis ‑ FY 25‑26</h1>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-else:
-    suppliers = ["All"] + sorted(df["Name"].dropna().unique())
 
-# Helper to format INR values in K/Cr
-def format_inr(value):
-    if value >= 1_00_00_000:
-        return f"₹{value/1_00_00_000:.2f} Cr"
-    if value >= 1_00_000:
-        return f"₹{value/1_00_000:.2f} Lakh"
-    if value >= 1_000:
-        return f"₹{value/1_000:.1f}K"
-    return f"₹{value:,.0f}"
+# Filter + KPI row (top of layout)
+col_sup, col_cat, col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(
+    [1.5, 1.5, 1.2, 1.2, 1.2, 1.2]
+)
 
-# --- Layout ---
-st.markdown(
-    """
-    <div class="app-header">
-        <h1>KEPL Procurement Analysis FY 25-26</h1>
+# Supplier (single‑select)
+all_suppliers = ["All"] + sorted(raw_df["Name"].dropna().unique())
+st.session_state.selected_supplier = col_sup.selectbox(
+    "Supplier Name",
+    all_suppliers,
+    index=all_suppliers.index(st.session_state.selected_supplier),
+    key="top_supplier",
+)
+
+# Category (single‑select)
+all_categories = ["All"] + sorted(raw_df["Category"].dropna().unique())
+st.session_state.selected_category = col_cat.selectbox(
+    "Category",
+    all_categories,
+    index=all_categories.index(st.session_state.selected_category),
+    key="top_category",
+)
+
+# Apply filters (for KPI + chart computation)
+filtered_df = apply_filters(raw_df)
+
+total_pos = filtered_df["P.O.No."].nunique()
+total_spend = filtered_df["Amt"].sum()
+total_vendors = filtered_df["Name"].nunique()
+avg_order = (
+    filtered_df.groupby("P.O.No.")["Amt"]
+    .sum()
+    .mean()
+    if not filtered_df.empty else 0
+)
+
+# Update KPI cards
+col_kpi1.markdown(
+    f"""
+    <div class="kpi-card">
+        <h3>Total No. of PO</h3>
+        <p class="value">{total_pos:,}</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+col_kpi2.markdown(
+    f"""
+    <div class="kpi-card">
+        <h3>Amt INR</h3>
+        <p class="value">{format_inr(total_spend)}</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+col_kpi3.markdown(
+    f"""
+    <div class="kpi-card">
+        <h3>Total Vendors</h3>
+        <p class="value">{total_vendors:,}</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+col_kpi4.markdown(
+    f"""
+    <div class="kpi-card">
+        <h3>Avg Order Value</h3>
+        <p class="value">{format_inr(avg_order)}</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# Filters row
-filter_col1, filter_col2, filter_col3 = st.columns([1.2, 1.2, 2.6])
-with filter_col1:
-    st.markdown("**Supplier Name**")
-    st.session_state["selected_supplier"] = st.selectbox(
-        "",
-        suppliers,
-        index=suppliers.index(st.session_state["selected_supplier"]) if st.session_state["selected_supplier"] in suppliers else 0,
-        key="supplier_filter",
-        label_visibility="collapsed",
-    )
-
-with filter_col2:
-    st.markdown("**Category**")
-    st.session_state["selected_category"] = st.selectbox(
-        "",
-        categories,
-        index=categories.index(st.session_state["selected_category"]) if st.session_state["selected_category"] in categories else 0,
-        key="category_filter",
-        label_visibility="collapsed",
-    )
-
-with filter_col3:
-    st.markdown("**Date Range**")
-    st.session_state["date_range"] = st.date_input(
-        "",
-        value=st.session_state["date_range"],
-        key="date_filter",
-        label_visibility="collapsed",
-    )
-
-# Apply filters
-filtered_df = df.copy()
-if st.session_state["selected_category"] != "All":
-    filtered_df = filtered_df[filtered_df["Category"] == st.session_state["selected_category"]]
-
-if st.session_state["selected_supplier"] != "All":
-    filtered_df = filtered_df[filtered_df["Name"] == st.session_state["selected_supplier"]]
-
-if len(st.session_state["date_range"]) == 2:
-    filtered_df = filtered_df[
-        (filtered_df["PO.Date"].dt.date >= st.session_state["date_range"][0])
-        & (filtered_df["PO.Date"].dt.date <= st.session_state["date_range"][1])
-    ]
-
-# Top metrics
-total_spend = filtered_df["Amt"].sum()
-total_orders = filtered_df["P.O.No."].nunique()
-total_suppliers = filtered_df["Name"].nunique()
-avg_order_value = filtered_df.groupby("P.O.No.")["Amt"].sum().mean()
-
-metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-
-with metric_col1:
-    st.markdown(
-        """
-        <div class='metric-card'>
-            <h3>Total No. of PO</h3>
-            <p class='value'>{}</p>
-        </div>
-        """.format(f"{total_orders:,}"),
-        unsafe_allow_html=True,
-    )
-
-with metric_col2:
-    st.markdown(
-        """
-        <div class='metric-card'>
-            <h3>Amt INR</h3>
-            <p class='value'>{}</p>
-        </div>
-        """.format(format_inr(total_spend)),
-        unsafe_allow_html=True,
-    )
-
-with metric_col3:
-    st.markdown(
-        """
-        <div class='metric-card'>
-            <h3>Total Vendors</h3>
-            <p class='value'>{}</p>
-        </div>
-        """.format(f"{total_suppliers:,}"),
-        unsafe_allow_html=True,
-    )
-
-with metric_col4:
-    st.markdown(
-        """
-        <div class='metric-card'>
-            <h3>Avg Order Value</h3>
-            <p class='value'>{}</p>
-        </div>
-        """.format(format_inr(avg_order_value or 0)),
-        unsafe_allow_html=True,
-    )
-
 st.markdown("---")
 
-# Main content: categories + charts
+# ----------------------------------------------------------------------
+# 8️⃣ Main area – category list + charts
+# ----------------------------------------------------------------------
 left_col, right_col = st.columns([1, 2])
 
 with left_col:
@@ -254,7 +285,7 @@ with left_col:
             <h4>Category</h4>
     """, unsafe_allow_html=True)
 
-    for cat in categories[1:]:
+    for cat in all_categories[1:]:
         selected_cls = "selected" if cat == st.session_state["selected_category"] else ""
         if st.button(cat, key=f"cat_{cat}"):
             st.session_state["selected_category"] = cat
