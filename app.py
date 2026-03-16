@@ -16,7 +16,15 @@ Features
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_plotly_events import plotly_events
+
+# Optional helper for click-to-filter; not required to run the dashboard.
+try:
+    from streamlit_plotly_events import plotly_events
+except ModuleNotFoundError:
+    def plotly_events(fig, click_event=False, hover_event=False, key=None):
+        """Fallback when streamlit-plotly-events isn't installed."""
+        return []
+
 from st_aggrid import AgGrid, GridOptionsBuilder
 from io import BytesIO
 from datetime import date, timedelta
