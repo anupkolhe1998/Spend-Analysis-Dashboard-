@@ -29,11 +29,13 @@ def get_db():
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    path = os.path.join("frontend", "index.html")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return "<h1>Server Online</h1><p>Frontend file not found.</p>"
+    # Check both potential locations for Render/Local compatibility
+    paths = [os.path.join("frontend", "index.html"), "index.html"]
+    for path in paths:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+    return "<h1>Server Online</h1><p>Frontend file not found. Ensure 'index.html' is in the root or 'frontend/' folder.</p>"
 
 @app.get("/api/status")
 def get_status():
