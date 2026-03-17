@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KEPL Spend Insights</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-tertiary: #ec4899;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            --header-height: 70px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            padding-bottom: 40px;
+        }
+
+        header {
+            height: var(--header-height);
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.2rem;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+        }
+
+        .logo span { color: var(--accent-primary); }
+
+        .btn-sync {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-sync:active { transform: scale(0.95); }
+
+        main {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Filter Section */
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        select {
+            appearance: none;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 12px;
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-weight: 500;
+            width: 100%;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+
+        /* Slicer Buttons */
+        .slicer-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+            padding: 5px;
+        }
+
+        .slicer-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow);
+            white-space: nowrap;
+        }
+
+        .slicer-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .slicer-btn.active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        /* KPI Cards */
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .kpi-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-label {
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        .kpi-value {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: -1px;
+        }
+
+        .kpi-card::after {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 5px;
+        }
+
+        .kpi-po::after { background: var(--accent-primary); }
+        .kpi-value-card::after { background: var(--accent-secondary); }
+        .kpi-vendor::after { background: var(--accent-tertiary); }
+
+        /* Charts */
+        .chart-box {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            padding-left: 5px;
+        }
+
+        /* Table Section */
+        .table-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 15px;
+            margin-top: 25px;
+            overflow-x: auto;
+            box-shadow: var(--shadow);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 10px;
+            background: var(--bg-color);
+            color: var(--text-secondary);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        .tag {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: var(--bg-color);
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .kpi-value { font-size: 1.8rem; }
+            main { padding: 15px; }
+            header { padding: 0 15px; }
+            .filters { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">KEPL <span>SPEND ANALYTICS FY 25-26</span></div>
+        <button class="btn-sync" onclick="syncData()">Sync Data</button>
+    </header>
+
+    <main>
+        <div class="filters">
+            <select id="sel-category" onchange="handleFilterChange('category')">
+                <option value="All">All Sectors</option>
+            </select>
+            <select id="sel-supplier" onchange="handleFilterChange('supplier')">
+                <option value="All">All Vendors</option>
+            </select>
+        </div>
+
+        <div id="type-slicers" class="slicer-container">
+            <!-- Slicer buttons injected here -->
+        </div>
+
+        <div class="kpi-container">
+            <div class="kpi-card kpi-po">
+                <div class="kpi-label">Transactional Volume</div>
+                <div class="kpi-value" id="kpi-po">0</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px;">PURCHASE ORDERS ISSUED</div>
+            </div>
+            <div class="kpi-card kpi-value-card">
+                <div class="kpi-label">Aggregate Spend</div>
+                <div class="kpi-value" id="kpi-spend">₹0</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px;">TOTAL PROCUREMENT VALUE</div>
+            </div>
+            <div class="kpi-card kpi-vendor">
+                <div class="kpi-label">Active Suppliers</div>
+                <div class="kpi-value" id="kpi-vendors">0</div>
+                <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px;">STRATEGIC PARTNER COUNT</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 25px;">
+            <div class="chart-box">
+                <div class="chart-title">Value wise Spendings (by Supplier)</div>
+                <div id="chart-suppliers"></div>
+            </div>
+            <div class="chart-box">
+                <div class="chart-title">Value wise Spendings (by Sector)</div>
+                <div id="chart-categories"></div>
+            </div>
+        </div>
+
+        <div class="chart-box">
+            <div class="chart-title">Value wise Spendings (Timeline)</div>
+            <div id="chart-trend"></div>
+        </div>
+
+        <div class="table-container">
+            <div class="chart-title">Value wise Spendings (Transaction Log)</div>
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th style="min-width:100px">Date</th>
+                        <th>Supplier</th>
+                        <th>Item Code</th>
+                        <th>Description</th>
+                        <th>Qty</th>
+                        <th>Rate</th>
+                        <th>Disc%</th>
+                        <th>Amount</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <!-- Rows injected here -->
+                </tbody>
+            </table>
+        </div>
+        <div id="db-status" style="text-align:center; padding: 20px; font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">
+            Connected to Powerhouse Database | Total Rows: <span id="row-count">...</span>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? window.location.origin : "http://localhost:8000";
+
+        async function fetchAPI(endpoint, params = {}) {
+            try {
+                const url = new URL(`${API_URL}${endpoint}`);
+                Object.keys(params).forEach(key => {
+                    if(params[key] && params[key] !== "All") url.searchParams.append(key, params[key]);
+                });
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                return await res.json();
+            } catch (e) {
+                console.error(`Fetch error for ${endpoint}:`, e);
+                return {};
+            }
+        }
+
+        function formatMoney(val) {
+            if (val >= 10000000) return `₹${(val/10000000).toFixed(2)}Cr`;
+            if (val >= 100000) return `₹${(val/100000).toFixed(2)}L`;
+            return `₹${val.toLocaleString('en-IN')}`;
+        }
+
+        let supplierChart, categoryChart, trendChart;
+        let selectedType = "All";
+
+        async function initDashboard() {
+            await refreshFilterOptions();
+            updateDashboard();
+        }
+
+        async function refreshFilterOptions() {
+            const category = document.getElementById("sel-category").value;
+            const supplier = document.getElementById("sel-supplier").value;
+            const type = selectedType;
+            
+            const filters = await fetchAPI("/filters", { category, supplier, proc_type: type });
+            
+            updateSelectOptions("sel-category", filters.categories, category);
+            updateSelectOptions("sel-supplier", filters.suppliers, supplier);
+            updateTypeSlicers(filters.types, type);
+        }
+
+        function updateTypeSlicers(options, currentValue) {
+            const container = document.getElementById("type-slicers");
+            // If current selection is not in new options, reset to All
+            if (currentValue !== "All" && !options.includes(currentValue)) {
+                selectedType = "All";
+                currentValue = "All";
+            }
+            
+            let html = `<button class="slicer-btn ${currentValue === 'All' ? 'active' : ''}" onclick="selectType('All')">All Types</button>`;
+            options.forEach(opt => {
+                const active = opt === currentValue ? "active" : "";
+                html += `<button class="slicer-btn ${active}" onclick="selectType('${opt}')">${opt}</button>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function updateSelectOptions(id, options, currentValue) {
+            const sel = document.getElementById(id);
+            const prefix = id === "sel-category" ? "All Sectors" : "All Vendors";
+            
+            // If current selection is not in new options, reset to All
+            if (currentValue !== "All" && !options.includes(currentValue)) {
+                currentValue = "All";
+            }
+
+            let html = `<option value="All">${prefix}</option>`;
+            options.forEach(opt => {
+                const selected = opt === currentValue ? "selected" : "";
+                html += `<option value="${opt}" ${selected}>${opt}</option>`;
+            });
+            sel.innerHTML = html;
+        }
+
+        async function selectType(val) {
+            selectedType = val;
+            await refreshFilterOptions();
+            updateDashboard();
+        }
+
+        async function handleFilterChange(source) {
+            await refreshFilterOptions();
+            updateDashboard();
+        }
+
+        async function updateDashboard() {
+            const category = document.getElementById("sel-category").value;
+            const supplier = document.getElementById("sel-supplier").value;
+            const type = selectedType;
+
+            const params = { category, supplier, proc_type: type };
+
+            const metrics = await fetchAPI("/metrics", params);
+            document.getElementById("kpi-po").innerText = metrics.po_count;
+            document.getElementById("kpi-spend").innerText = formatMoney(metrics.total_spend);
+            document.getElementById("kpi-vendors").innerText = metrics.vendor_count;
+
+            // Update row count from status endpoint
+            const stats = await fetchAPI("/api/status");
+            if (stats.rows !== undefined) {
+                document.getElementById("row-count").innerText = Number(stats.rows).toLocaleString();
+            }
+
+            updateCharts(params);
+            updateTable(params);
+        }
+
+        async function updateCharts(params) {
+            const suppliers = await fetchAPI("/charts/top-suppliers", params);
+            const categories = await fetchAPI("/charts/category-dist", params);
+            const trend = await fetchAPI("/charts/trend", params);
+
+            // Supplier Chart
+            const suppOptions = {
+                series: [{ name: 'Spend', data: suppliers.map(s => s.amount) }],
+                chart: { type: 'bar', height: 350, toolbar: { show: false }, fontFamily: 'Outfit' },
+                colors: ['#6366f1'],
+                dataLabels: { 
+                    enabled: true,
+                    textAnchor: 'start',
+                    style: { fontSize: '11px', colors: ['#0f172a'], fontWeight: 700 },
+                    offsetX: 5,
+                    formatter: val => formatMoney(val)
+                },
+                plotOptions: { 
+                    bar: { 
+                        borderRadius: 6, 
+                        horizontal: true,
+                        dataLabels: { position: 'top' } 
+                    } 
+                },
+                xaxis: { 
+                    categories: suppliers.map(s => s.supplier),
+                    labels: { style: { colors: '#64748b' }, formatter: val => formatMoney(val) } 
+                },
+                grid: { borderColor: '#f1f5f9' },
+                tooltip: { y: { formatter: val => formatMoney(val) } }
+            };
+
+            if (supplierChart) supplierChart.updateOptions(suppOptions);
+            else { supplierChart = new ApexCharts(document.querySelector("#chart-suppliers"), suppOptions); supplierChart.render(); }
+
+            // Category Chart
+            const catOptions = {
+                series: categories.map(c => c.amount),
+                chart: { type: 'donut', height: 350, fontFamily: 'Outfit' },
+                labels: categories.map(c => c.category),
+                colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#06b6d4', '#84cc16'],
+                legend: { position: 'bottom', fontSize: '11px', fontWeight: 600 },
+                dataLabels: { 
+                    enabled: true,
+                    formatter: (val, opts) => opts.w.config.series[opts.seriesIndex] > 0 ? `${val.toFixed(0)}%` : ''
+                },
+                plotOptions: { 
+                    pie: { 
+                        donut: { 
+                            size: '72%',
+                            labels: {
+                                show: true,
+                                name: { show: true, fontSize: '12px', fontWeight: 600, color: '#64748b' },
+                                value: { 
+                                    show: true, 
+                                    fontSize: '20px', 
+                                    fontWeight: 900, 
+                                    color: '#0f172a',
+                                    formatter: val => formatMoney(val)
+                                },
+                                total: {
+                                    show: true,
+                                    label: 'Total Spend',
+                                    fontSize: '10px',
+                                    fontWeight: 800,
+                                    color: '#64748b',
+                                    formatter: w => formatMoney(w.globals.seriesTotals.reduce((a, b) => a + b, 0))
+                                }
+                            }
+                        } 
+                    } 
+                },
+                tooltip: { y: { formatter: val => formatMoney(val) } }
+            };
+
+            if (categoryChart) categoryChart.updateOptions(catOptions);
+            else { categoryChart = new ApexCharts(document.querySelector("#chart-categories"), catOptions); categoryChart.render(); }
+
+            // Trend Chart
+            const trendOptions = {
+                series: [{ name: 'Monthly Spend', data: trend.map(t => t.amount) }],
+                chart: { type: 'area', height: 350, toolbar: { show: false }, fontFamily: 'Outfit' },
+                colors: ['#6366f1'],
+                stroke: { curve: 'smooth', width: 3 },
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.1 } },
+                dataLabels: { 
+                    enabled: false // Area chart usually cleaner without all labels
+                },
+                markers: { size: 4, colors: ['#6366f1'], strokeWidth: 2, hover: { size: 6 } },
+                xaxis: { 
+                    categories: trend.map(t => t.month_year), 
+                    labels: { style: { colors: '#64748b', fontWeight: 600 } } 
+                },
+                yaxis: { 
+                    title: { text: 'Monthly Expenditure (₹)', style: { color: '#64748b', fontWeight: 600 } },
+                    labels: { style: { colors: '#64748b' }, formatter: val => formatMoney(val) } 
+                },
+                grid: { borderColor: '#f1f5f9' },
+                tooltip: { y: { formatter: val => formatMoney(val) } }
+            };
+
+            if (trendChart) trendChart.updateOptions(trendOptions);
+            else { trendChart = new ApexCharts(document.querySelector("#chart-trend"), trendOptions); trendChart.render(); }
+        }
+
+        async function updateTable(params) {
+            const txns = await fetchAPI("/transactions", params);
+            const tbody = document.getElementById("table-body");
+            tbody.innerHTML = txns.map(t => `
+                <tr>
+                    <td style="white-space:nowrap">${t.po_date}</td>
+                    <td style="font-weight:600">${t.supplier}</td>
+                    <td><span class="tag">${t.item_cd || 'N/A'}</span></td>
+                    <td style="font-size:0.75rem; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${t.description || ''}">${t.description || 'N/A'}</td>
+                    <td style="font-weight:600">${t.qty}</td>
+                    <td>${t.rate.toLocaleString('en-IN')}</td>
+                    <td>${t.discount}%</td>
+                    <td style="font-weight:800; color:var(--accent-primary)">${formatMoney(t.amount)}</td>
+                    <td><span class="tag">${t.proc_type}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        async function syncData() {
+            const btn = document.querySelector(".btn-sync");
+            btn.innerText = "Syncing...";
+            btn.disabled = true;
+            await fetch(`${API_URL}/sync`, { method: 'POST' });
+            alert("Refresh started! The 83k-row sync takes about 10 seconds. Reload page to see changes.");
+            btn.innerText = "Sync Data";
+            btn.disabled = false;
+        }
+
+        initDashboard();
+    </script>
+</body>
+</html>
